@@ -1,94 +1,74 @@
-# GoDNS - A Lightweight DNS Server in Go
+# GoDNS - A Lightweight Custom DNS Server in Go
 
 ## Overview
-GoDNS is a high-performance, customizable DNS server written in Golang. It supports recursive DNS resolution, caching, and various DNS record types. Additionally, it includes security features like DNS over HTTPS (DoH) and DNS over TLS (DoT) for encrypted queries.
+This project is a high-performance, fully functional DNS server written in Go. Designed with efficiency and scalability in mind, it provides fast domain resolution while maintaining strict compliance with the DNS protocol. By leveraging Go's concurrency model, the server ensures low-latency query resolution, making it suitable for both personal and enterprise-level deployments.
 
 ## Features
-- **Recursive DNS Resolution** – Resolves domain names by querying root, TLD, and authoritative servers.
-- **Caching** – Stores resolved queries to improve performance.
-- **Support for Multiple DNS Record Types**:
-  - A (IPv4 Address)
-  - AAAA (IPv6 Address)
-  - CNAME (Canonical Name)
-  - MX (Mail Exchanger)
-  - NS (Name Server)
-  - TXT (Text Records)
-  - PTR (Reverse DNS Lookup)
-- **Security Enhancements**:
-  - DNS over HTTPS (DoH)
-  - DNS over TLS (DoT)
-  - DNSSEC (Domain Name System Security Extensions)
-- **Custom Configuration** – Define custom domain mappings.
+- **Custom DNS Resolution**: Implements core DNS query handling without relying on third-party resolvers.
+- **Efficient Parsing and Encoding**: Optimized request parsing and response encoding to minimize processing overhead.
+- **Concurrency-Driven Performance**: Uses Goroutines to handle multiple requests concurrently.
+- **Logging and Debugging**: Provides detailed logs for each query, allowing easy debugging and monitoring.
+- **Configurable Query Handling**: Easily extendable for custom domain resolution logic.
 
 ## Installation
-
 ### Prerequisites
-- Golang installed (Go 1.18+ recommended)
+Ensure you have the following installed on your system:
+- **Go 1.18+**
+- **Git**
 
 ### Clone the Repository
 ```sh
-git clone https://github.com/yourusername/GoDNS.git
-cd GoDNS
+ git clone https://github.com/sumitbhuia/GoDNS.git
+ cd GoDNS
 ```
 
-### Install Dependencies
+### Build and Run
+To build the server, run:
 ```sh
-go mod tidy
+ go build -o GoDNS main.go
+```
+
+To execute the server:
+```sh
+ ./GoDNS
+```
+Alternatively, you can use the provided script:
+```sh
+ chmod +x run.sh
+ ./run.sh
 ```
 
 ## Usage
-
-### Start the DNS Server
+The server listens for DNS queries on port 53 by default. You can configure custom settings inside `server.go`. Once running, use a tool like `dig` to test its functionality:
 ```sh
-go run main.go
-```
-By default, the server listens on **UDP port 53**.
-
-### Configure Custom DNS Records
-Modify `config.json` to define custom mappings.
-
-Example:
-```json
-{
-  "A": {
-    "example.com": "192.168.1.1"
-  },
-  "CNAME": {
-    "www.example.com": "example.com"
-  },
-  "MX": {
-    "example.com": "mail.example.com"
-  }
-}
+ dig @localhost example.com
 ```
 
-## API Endpoints (For DoH Support)
-| Method | Endpoint | Description |
-|--------|---------|-------------|
-| GET | `/dns-query` | Resolves a domain over HTTPS |
-| POST | `/resolve` | Performs a DNS lookup via JSON request |
+## Project Structure
+```
+├── dns
+│   ├── message.go   # DNS message parsing and encoding
+│   ├── server.go    # DNS server logic
+│   ├── dns_test.go  # Unit tests for DNS handling
+├── main.go          # Entry point for the server
+├── run.sh           # Script to run the server
+├── go.mod           # Go module file
+└── README.md        # Documentation
+```
 
-## Learning
-During the development of GoDNS, the following key concepts and technologies were explored:
-- **DNS Protocol** – Understanding how domain name resolution works, including recursive and iterative queries.
-- **Go Networking** – Utilizing Go's `net` package and `miekg/dns` library for DNS query handling.
-- **Caching Mechanisms** – Implementing in-memory caching strategies to improve response times.
-- **Security in DNS** – Exploring DNSSEC, DoH, and DoT for encrypted and secure DNS resolution.
-- **Configuration Management** – Creating JSON-based configurations for easy customization of DNS records.
-- **Optimizing Performance** – Reducing latency with efficient query handling and caching strategies.
+## Testing
+Unit tests are included to validate DNS query handling. Run the tests with:
+```sh
+ go test ./dns
 
-## Roadmap
-- Implement full DNSSEC validation.
-- Add Web UI for managing DNS records.
-- Enhance caching with TTL-based eviction policies.
-
-## Contributing
-Pull requests are welcome! Please open an issue first to discuss proposed changes.
-
-## License
-This project is licensed under the MIT License.
-
-## Acknowledgments
-- Inspired by existing DNS resolver implementations.
-- Uses `miekg/dns` for handling DNS queries efficiently.
+# INSIDE DNS DIRECTORY
+ go test -v
+```
+## BUG FIX PENDING
+- 9 Byte extra message size at the end . Possibly error in parsing logic.
+- 
+## Future Enhancements
+- **Caching Mechanism**: Implement query caching for faster resolution.
+- **Custom Records Support**: Allow user-defined static DNS records.
+- **Security Enhancements**: Add DNSSEC support and enhanced logging.
 
