@@ -6,25 +6,15 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-
-	// "log"
 	"strings"
 )
 
 const (
-	QTYPE_A       = 1  // Host address
-	QCLASS_IN     = 1  // Internet
-	TYPE_OPT      = 41 // EDNS0 OPT pseudo-RR
-	CLASS_IN      = 1
-	EDNS0_VERSION = 0
+	QTYPE_A   = 1  // Host address
+	QCLASS_IN = 1  // Internet
+	TYPE_OPT  = 41 // EDNS0 OPT record
+	CLASS_IN  = 1
 )
-
-// Add EDNS0 specific type
-type EDNSOption struct {
-	Code   uint16
-	Length uint16
-	Data   []byte
-}
 
 type DNSHeader struct {
 	ID      uint16
@@ -41,7 +31,7 @@ type DNSQuestion struct {
 	Class uint16
 }
 
-type DNSAnswer struct {
+type DNSRecord struct {
 	Name     string
 	Type     uint16
 	Class    uint16
@@ -50,30 +40,38 @@ type DNSAnswer struct {
 	RData    []byte
 }
 
-// Extend DNSMessage to include EDNS0 details
 type DNSMessage struct {
 	Header     DNSHeader
-	Question   []DNSQuestion
-	Answers    []DNSAnswer
-	Authority  []DNSAnswer
-	Additional []DNSAnswer
-	EDNS       *EDNSOption
+	Questions  []DNSQuestion
+	Answers    []DNSRecord
+	Authority  []DNSRecord
+	Additional []DNSRecord
 }
 
 // encodeDomainName converts a domain name string to DNS wire format
 func encodeDomainName(domain string) []byte {
 	var encoded bytes.Buffer
+
+	// Special case for empty domain
 	if domain == "" {
 		encoded.WriteByte(0)
 		return encoded.Bytes()
 	}
 
-	labels := strings.Split(strings.Trim(domain, "."), ".")
+	// Special case for root domain
+	if domain == "." {
+		encoded.WriteByte(0)
+		return encoded.Bytes()
+	}
+
+	domain = strings.TrimSuffix(domain, ".")
+
+	labels := strings.Split(domain, ".")
 	for _, label := range labels {
 		encoded.WriteByte(byte(len(label)))
 		encoded.WriteString(label)
 	}
-	encoded.WriteByte(0) // Root label
+	encoded.WriteByte(0)
 	return encoded.Bytes()
 }
 
@@ -84,86 +82,77 @@ func decodeDomainName(data []byte, offset int) (string, int, error) {
 	}
 
 	var name strings.Builder
-
+	originalOffset := offset
 	visited := make(map[int]bool)
+
+	// Special case: if first byte is 0, return empty string for empty domain
+	if data[offset] == 0 {
+		return "", offset + 1, nil
+	}
 
 	for {
 		if offset >= len(data) {
-			return "", offset, errors.New("truncated domain name")
+			return "", originalOffset, errors.New("truncated domain name")
 		}
 
-		// Check for compression pointer
-		if data[offset]&0xC0 == 0xC0 {
-			if offset+1 >= len(data) {
-				return "", offset, errors.New("incomplete compression pointer")
-			}
-
-			// Extract compression pointer
-			pointerOffset := int(binary.BigEndian.Uint16(data[offset:offset+2]) & 0x3FFF)
-
-			// Prevent infinite loops
-			if visited[pointerOffset] {
-				return "", offset, errors.New("circular compression pointer")
-			}
-			visited[pointerOffset] = true
-
-			// Temporarily change offset and continue parsing
-			offset = pointerOffset
-			continue
-		}
-
-		// Length of current label
 		length := int(data[offset])
 
-		// Null terminator
+		// Check for compression pointer
+		if length&0xC0 == 0xC0 {
+			if offset+2 > len(data) {
+				return "", originalOffset, errors.New("invalid compression pointer")
+			}
+
+			pointer := int(binary.BigEndian.Uint16(data[offset:offset+2]) & 0x3FFF)
+			if visited[pointer] {
+				return "", originalOffset, errors.New("compression loop detected")
+			}
+			visited[pointer] = true
+
+			if pointer >= offset {
+				return "", originalOffset, errors.New("forward compression pointer")
+			}
+
+			suffixName, _, err := decodeDomainName(data, pointer)
+			if err != nil {
+				return "", originalOffset, err
+			}
+
+			if name.Len() > 0 {
+				name.WriteString(".")
+			}
+			name.WriteString(suffixName)
+			return name.String(), offset + 2, nil
+		}
+
+		// Regular label
 		if length == 0 {
-			offset++
-			break
+			if name.Len() == 0 {
+				return ".", offset + 1, nil
+			}
+			return name.String(), offset + 1, nil
 		}
 
-		// Ensure we don't go out of bounds
 		if offset+1+length > len(data) {
-			return "", offset, errors.New("label exceeds message length")
+			return "", originalOffset, errors.New("label exceeds message")
 		}
 
-		// Add dot for subsequent labels
 		if name.Len() > 0 {
-			name.WriteRune('.')
+			name.WriteString(".")
 		}
-
-		// Write label
 		name.Write(data[offset+1 : offset+1+length])
-
-		// Move offset
 		offset += 1 + length
 	}
-
-	return name.String(), offset, nil
 }
 
 func (msg *DNSMessage) Pack() ([]byte, error) {
 	var buf bytes.Buffer
 
-	// Recalculate counts
-	msg.Header.QDCount = uint16(len(msg.Question))
-	msg.Header.ANCount = uint16(len(msg.Answers))
-	msg.Header.NSCount = uint16(len(msg.Authority))
-	msg.Header.ARCount = uint16(len(msg.Additional))
-
-	// Ensure EDNS is handled correctly
-	if msg.EDNS == nil {
-		msg.EDNS = &EDNSOption{
-			Code:   TYPE_OPT,
-			Length: 0,
-		}
-		msg.Header.ARCount = 1
-	}
-
 	// Write header
 	binary.Write(&buf, binary.BigEndian, msg.Header)
 
 	// Write questions
-	for _, q := range msg.Question {
+	for _, q := range msg.Questions {
 		buf.Write(encodeDomainName(q.Name))
 		binary.Write(&buf, binary.BigEndian, q.Type)
 		binary.Write(&buf, binary.BigEndian, q.Class)
@@ -179,24 +168,24 @@ func (msg *DNSMessage) Pack() ([]byte, error) {
 		buf.Write(a.RData)
 	}
 
-	// Write authority records
-	for _, ns := range msg.Authority {
-		buf.Write(encodeDomainName(ns.Name))
-		binary.Write(&buf, binary.BigEndian, ns.Type)
-		binary.Write(&buf, binary.BigEndian, ns.Class)
-		binary.Write(&buf, binary.BigEndian, ns.TTL)
-		binary.Write(&buf, binary.BigEndian, ns.RDLength)
-		buf.Write(ns.RData)
+	// Write authority
+	for _, a := range msg.Authority {
+		buf.Write(encodeDomainName(a.Name))
+		binary.Write(&buf, binary.BigEndian, a.Type)
+		binary.Write(&buf, binary.BigEndian, a.Class)
+		binary.Write(&buf, binary.BigEndian, a.TTL)
+		binary.Write(&buf, binary.BigEndian, a.RDLength)
+		buf.Write(a.RData)
 	}
 
-	// Write EDNS pseudosection explicitly
-	if msg.EDNS != nil {
-		buf.WriteByte(0) // Root name
-		binary.Write(&buf, binary.BigEndian, uint16(TYPE_OPT))
-		binary.Write(&buf, binary.BigEndian, uint16(4096)) // UDP payload size
-		buf.WriteByte(EDNS0_VERSION)
-		buf.WriteByte(0)                                // No extended flags
-		binary.Write(&buf, binary.BigEndian, uint16(0)) // No RDATA
+	// Write additional
+	for _, a := range msg.Additional {
+		buf.Write(encodeDomainName(a.Name))
+		binary.Write(&buf, binary.BigEndian, a.Type)
+		binary.Write(&buf, binary.BigEndian, a.Class)
+		binary.Write(&buf, binary.BigEndian, a.TTL)
+		binary.Write(&buf, binary.BigEndian, a.RDLength)
+		buf.Write(a.RData)
 	}
 
 	return buf.Bytes(), nil
@@ -204,12 +193,12 @@ func (msg *DNSMessage) Pack() ([]byte, error) {
 
 func ParseDNSMessage(data []byte) (*DNSMessage, error) {
 	if len(data) < 12 {
-		return nil, fmt.Errorf("message too short: %d bytes", len(data))
+		return nil, fmt.Errorf("message too short")
 	}
 
 	msg := &DNSMessage{}
 
-	// Parse Header
+	// Parse header
 	msg.Header.ID = binary.BigEndian.Uint16(data[0:2])
 	msg.Header.Flags = binary.BigEndian.Uint16(data[2:4])
 	msg.Header.QDCount = binary.BigEndian.Uint16(data[4:6])
@@ -219,98 +208,86 @@ func ParseDNSMessage(data []byte) (*DNSMessage, error) {
 
 	offset := 12
 
-	// Parse Questions
+	// Parse questions
 	for i := uint16(0); i < msg.Header.QDCount; i++ {
 		name, newOffset, err := decodeDomainName(data, offset)
 		if err != nil {
-			return nil, fmt.Errorf("error parsing question name: %v", err)
+			return nil, fmt.Errorf("error parsing question: %v", err)
 		}
+		offset = newOffset
 
-		if newOffset+4 > len(data) {
+		if offset+4 > len(data) {
 			return nil, errors.New("truncated question section")
 		}
 
 		question := DNSQuestion{
 			Name:  name,
-			Type:  binary.BigEndian.Uint16(data[newOffset : newOffset+2]),
-			Class: binary.BigEndian.Uint16(data[newOffset+2 : newOffset+4]),
+			Type:  binary.BigEndian.Uint16(data[offset : offset+2]),
+			Class: binary.BigEndian.Uint16(data[offset+2 : offset+4]),
 		}
-		msg.Question = append(msg.Question, question)
-		offset = newOffset + 4
+		msg.Questions = append(msg.Questions, question)
+		offset += 4
 	}
 
-	// Sections to parse
-	sections := []struct {
-		count   uint16
-		records *[]DNSAnswer
-		name    string
-	}{
-		{msg.Header.ANCount, &msg.Answers, "answer"},
-		{msg.Header.NSCount, &msg.Authority, "authority"},
-		{msg.Header.ARCount, &msg.Additional, "additional"},
-	}
-
-	for _, section := range sections {
-		for i := uint16(0); i < section.count; i++ {
-			if offset >= len(data) {
-				break
-			}
-
-			name, newOffset, err := decodeDomainName(data, offset)
-			if err != nil {
-				return nil, fmt.Errorf("error parsing %s section name: %v", section.name, err)
-			}
-
-			if newOffset+10 > len(data) {
-				return nil, fmt.Errorf("truncated %s section", section.name)
-			}
-
-			recType := binary.BigEndian.Uint16(data[newOffset : newOffset+2])
-			recClass := binary.BigEndian.Uint16(data[newOffset+2 : newOffset+4])
-
-			// EDNS handling
-			if recType == TYPE_OPT {
-				rdLength := binary.BigEndian.Uint16(data[newOffset+8 : newOffset+10])
-
-				// Ensure we don't go out of bounds
-				if newOffset+10+int(rdLength) > len(data) {
-					return nil, fmt.Errorf("truncated EDNS record")
-				}
-
-				msg.EDNS = &EDNSOption{
-					Code:   recType,
-					Length: rdLength,
-					Data:   data[newOffset+10 : newOffset+10+int(rdLength)],
-				}
-				offset = newOffset + 10 + int(rdLength)
-				continue
-			}
-
-			rdLength := binary.BigEndian.Uint16(data[newOffset+8 : newOffset+10])
-
-			// Ensure we don't go out of bounds
-			if newOffset+10+int(rdLength) > len(data) {
-				return nil, fmt.Errorf("truncated rdata in %s section", section.name)
-			}
-
-			answer := DNSAnswer{
-				Name:     name,
-				Type:     recType,
-				Class:    recClass,
-				TTL:      binary.BigEndian.Uint32(data[newOffset+4 : newOffset+8]),
-				RDLength: rdLength,
-				RData:    data[newOffset+10 : newOffset+10+int(rdLength)],
-			}
-
-			*section.records = append(*section.records, answer)
-			offset = newOffset + 10 + int(rdLength)
+	// Parse answers
+	for i := uint16(0); i < msg.Header.ANCount; i++ {
+		record, newOffset, err := parseRecord(data, offset)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing answer: %v", err)
 		}
+		msg.Answers = append(msg.Answers, record)
+		offset = newOffset
 	}
 
-	// Handle extra bytes
-	if offset < len(data) {
-		fmt.Printf("Warning: %d extra bytes at end of DNS message\n", len(data)-offset)
+	// Parse authority
+	for i := uint16(0); i < msg.Header.NSCount; i++ {
+		record, newOffset, err := parseRecord(data, offset)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing authority: %v", err)
+		}
+		msg.Authority = append(msg.Authority, record)
+		offset = newOffset
+	}
+
+	// Parse additional
+	for i := uint16(0); i < msg.Header.ARCount; i++ {
+		record, newOffset, err := parseRecord(data, offset)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing additional: %v", err)
+		}
+		msg.Additional = append(msg.Additional, record)
+		offset = newOffset
 	}
 
 	return msg, nil
+}
+
+func parseRecord(data []byte, offset int) (DNSRecord, int, error) {
+	var record DNSRecord
+	var err error
+
+	record.Name, offset, err = decodeDomainName(data, offset)
+	if err != nil {
+		return record, offset, err
+	}
+
+	if offset+10 > len(data) {
+		return record, offset, errors.New("truncated record")
+	}
+
+	record.Type = binary.BigEndian.Uint16(data[offset : offset+2])
+	record.Class = binary.BigEndian.Uint16(data[offset+2 : offset+4])
+	record.TTL = binary.BigEndian.Uint32(data[offset+4 : offset+8])
+	record.RDLength = binary.BigEndian.Uint16(data[offset+8 : offset+10])
+	offset += 10
+
+	if offset+int(record.RDLength) > len(data) {
+		return record, offset, errors.New("truncated rdata")
+	}
+
+	record.RData = make([]byte, record.RDLength)
+	copy(record.RData, data[offset:offset+int(record.RDLength)])
+	offset += int(record.RDLength)
+
+	return record, offset, nil
 }
