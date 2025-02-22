@@ -114,13 +114,13 @@ The server will start listening on UDP port 53, handling incoming DNS queries an
 
 ---
 
-## 🔥 **Future Enhancements & Roadmap**  
+## **Future Enhancements ????**  
 
-✅ **DNSSEC Validation & Signature Checking (RFC 4035)**  
-✅ **DNS-over-TLS (DoT) & DNS-over-HTTPS (DoH) Support**  
-✅ **gRPC API for Query Inspection & Analytics**  
-✅ **Adaptive Query Routing Using AI-Based Traffic Shaping**  
-✅ **Advanced Anycast Load Balancing for Geo-Optimized Resolution**  
+- **DNSSEC Validation & Signature Checking (RFC 4035)**  
+- **DNS-over-TLS (DoT) & DNS-over-HTTPS (DoH) Support**  
+- **gRPC API for Query Inspection & Analytics**  
+- **Adaptive Query Routing Using AI-Based Traffic Shaping**  
+- **Advanced Anycast Load Balancing for Geo-Optimized Resolution**  
 
 ---
 
@@ -137,16 +137,10 @@ The server will start listening on UDP port 53, handling incoming DNS queries an
 ## **Contact**  
  
 
-📧 **Email:** you@example.com  
-🐙 **GitHub:** [yourusername](https://github.com/yourusername)  
-💬 **Twitter:** [@yourhandle](https://twitter.com/yourhandle)  
+📧 **Email:** sumitbhuia100@gmail.com  
+🐙 **GitHub:** [sumitbhuia](https://github.com/sumitbhuia)  
+💬 **Twitter:** [@bhuia_sumit](https://twitter.com/bhuia_sumit)  
 
 ---
 
 ⭐ **If you find this project useful, consider starring the repository!** ⭐  
-
-```sh
-git commit -m "Enhanced DNS resolution pipeline for ultra-low latency."
-```  
-
-🚀 **GoDNS – Where High-Performance Networking Meets Protocol Precision!** 🚀
