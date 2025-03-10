@@ -1,146 +1,142 @@
-# ⚡ **GoDNS – High-Performance, RFC-Compliant Recursive DNS Resolver**  
+# ⚡ GoDNS - High-Performance, RFC-Compliant Recursive DNS Resolver
 
-> **"Engineered for low-latency, high-throughput, and fault-tolerant DNS resolution with strict compliance to IETF standards, optimized for enterprise-scale networking environments."**  
+A concurrent DNS protocol implementation in Go, featuring non-blocking I/O architecture, RFC1035-compliant message processing, and upstream resolver integration. The implementation demonstrates advanced protocol engineering patterns and distributed systems principles.
 
-## **Overview**  
+## Protocol Architecture
 
-**GoDNS** is a advanced **recursive Domain Name System (DNS) resolver** implemented in **pure Go**, engineered for **high concurrency, low-latency query resolution, and compliance with DNS protocol specifications (RFC 1035, RFC 2181, RFC 4035, and RFC 6891).**  
+### Core Implementation Components
+- **UDP Transport Layer**: Non-blocking datagram processing with concurrent goroutine dispatch
+- **DNS Protocol Layer**: RFC1035-compliant message encoding/decoding with compression support
+- **Resource Record Handler**: Polymorphic RR type processing with binary-safe implementations
+- **Query Propagation**: Asynchronous upstream resolver integration with timeout semantics
 
-Built with **zero external dependencies**, **GoDNS** provides a **highly optimized UDP/TCP-based resolver stack**, leveraging **Goroutine-based parallelism**, **efficient memory allocation**, and **binary-safe message processing** to ensure **minimal CPU overhead and optimal performance under extreme load conditions**.  
+### Protocol Specifications
+```go
+type DNSHeader struct {
+    ID      uint16 // Transaction identifier
+    Flags   uint16 // Control flags (QR|Opcode|AA|TC|RD|RA|Z|RCODE)
+    QDCount uint16 // Question section cardinality
+    ANCount uint16 // Answer section RR count
+    NSCount uint16 // Authority section RR count
+    ARCount uint16 // Additional section RR count
+}
 
-Designed to be **resilient, extensible, and security-hardened**, it is **ideal for production-grade deployments in cloud-native microservices architectures, edge computing, CDN infrastructures, and low-latency applications such as financial services, real-time analytics, and 5G networking.**  
+type DNSQuestion struct {
+    Name  string  // Domain name sequence
+    Type  uint16  // RR type identifier
+    Class uint16  // Class identifier
+}
 
----
+type DNSRecord struct {
+    Name     string  // Domain name sequence
+    Type     uint16  // RR type identifier
+    Class    uint16  // Class identifier
+    TTL      uint32  // Time-to-live
+    RDLength uint16  // RDATA length
+    RData    []byte  // Resource data
+}
+```
 
-## **Key Features & Enhancements**  
+## Implementation Architecture
 
-### **Performance Optimizations**  
-- **Zero-Copy UDP Handling** – Direct manipulation of raw packet buffers to eliminate unnecessary memory allocations.  
-- **Goroutine Pipelining for Asynchronous Query Resolution** – Dynamically spawns **lightweight concurrent workers** for **parallel query execution**.  
-- **Custom Memory Pooling Mechanism** – Reduces **GC (Garbage Collection) pressure** by reusing preallocated memory buffers.  
-- **Optimized Trie-Based Name Compression Handling** – Implements **constant-time lookup for repeated domain labels**.  
+### Protocol Processing Pipeline
 
-### **Security**  
-- **Query Validation & Spoofing Protection** – Implements **strict packet integrity checks**, **request ID randomization**, and **source IP verification**.  
-- **Adaptive Rate Limiting (RRL) to Mitigate DDoS Attacks** – Employs **dynamic query throttling** to prevent **amplification attacks**.  
-- **Strict RFC 1035 Compliance** – Enforces **valid query structure, response codes, and message integrity constraints**.  
-- **Protection Against DNS Rebinding & Cache Poisoning** – Implements **intelligent response validation**, **query sanitization**, and **multi-layered authentication**.  
+#### Message Parser Implementation
+- Binary-safe buffer management for DNS wire format
+- Domain name label compression/decompression with pointer traversal
+- Resource record serialization with length-prefixed encoding
+- Transaction ID correlation for asynchronous responses
 
-### **Advanced Networking Capabilities**  
-- **UDP/TCP Resolver with Fallback Support** – Dynamically switches between **UDP (port 53)** and **TCP (port 53, 853 for DNS-over-TLS)** based on **MTU size** and **response truncation flags**.  
-- **Recursive Query Forwarding with Multi-Tier Failover** – Implements **fault-tolerant failover logic**, supporting **multi-region DNS resolvers and Anycast routing**.  
-- **EDNS0 Support (RFC 6891)** – Extends **UDP packet sizes beyond 512 bytes**, enabling compatibility with **DNSSEC, IPv6, and advanced query types**.  
-- **SO_REUSEPORT & SO_BINDTODEVICE Support** – Enables **load-balanced listener sockets for horizontal scalability**.  
+#### Network Stack Integration
+- UDP socket multiplexing with Go runtime scheduler
+- Concurrent query handling via goroutine dispatch
+- Configurable upstream resolver interface
+- Structured error propagation and logging
 
----
+### Binary Wire Format Specification
 
-## **Architecture & Internal Mechanics**  
+#### DNS Header Structure (96 bits)
+| Field      | Bit Offset | Length | Semantic Definition |
+|------------|------------|--------|-------------------|
+| ID         | 0          | 16     | Query identifier for transaction correlation |
+| Flags      | 16         | 16     | Protocol control bits |
+| QDCOUNT    | 32         | 16     | Question section cardinality |
+| ANCOUNT    | 48         | 16     | Answer section RR count |
+| NSCOUNT    | 64         | 16     | Authority section RR count |
+| ARCOUNT    | 80         | 16     | Additional section RR count |
 
-### **DNS Query Resolution Flow**  
+#### Message Compression Algorithm
+- Label pointer detection with 2-bit discrimination
+- Offset-based compression with 14-bit pointer space
+- Recursive decompression with cycle detection
+- Length-prefixed label encoding
 
-1️⃣ **Packet Reception & Preprocessing**  
-   - **Listens on UDP (port 53) with raw socket access** for **low-latency packet handling**.  
-   - **Parses incoming queries** using **high-performance bitwise operations**.  
+## Implementation Capabilities
 
-2️⃣ **Header & Question Section Processing**  
-   - **Decodes and verifies request headers** (opcode, flags, question count, and recursion settings).  
-   - **Extracts QNAME (domain name), QTYPE (record type), and QCLASS (query class) using a zero-copy buffer mechanism**.  
+### Protocol Features
+- RFC1035-compliant message processing
+- Concurrent query handling
+- Upstream resolver integration
+- Error propagation and recovery
+- Domain name compression support
 
-3️⃣ **Recursive Resolution & Upstream Query Handling**  
-   - **Performs iterative lookups** using **root hints and authoritative name servers**.  
-   - **Implements an intelligent caching mechanism (LRU-based, with TTL-aware eviction policies).**  
-   - **Forwards unresolved queries to upstream resolvers (Cloudflare, Google Public DNS, OpenDNS, or custom resolvers).**  
+### Technical Architecture
+- Non-blocking I/O operations
+- Concurrent goroutine dispatch
+- Binary-safe buffer handling
+- Resource lifecycle management
 
-4️⃣ **Response Serialization & Compression Handling**  
-   - **Encodes responses in accordance with RFC 1035, using domain name compression techniques to minimize payload size.**  
-   - **Optimizes TTL assignments for cache-friendly response delivery.**  
+## Deployment Configuration
 
-5️⃣ **Packet Dispatch & Performance Monitoring**  
-   - **Delivers final response via UDP, with automatic fragmentation prevention.**  
-   - **Implements query tracking with built-in telemetry, exposing Prometheus metrics.**  
+### Prerequisites
+- Go runtime environment (≥1.18)
+- Privileged port binding capabilities
+- Network stack access permissions
 
----
-
-## 📊 **Performance Benchmarks**  
-
-| Metric                 | Value                     |
-|------------------------|--------------------------|
-| Query Processing Time  | **<0.5 ms (p95 latency)** |
-| Maximum QPS           | **~100,000 QPS (single core)** |
-| Memory Usage          | **<10 MB per 1M queries** |
-| Concurrent Queries    | **>1,000,000 active sessions** |
-| UDP Overhead         | **Minimal (~28 bytes/query)** |
-
----
-
-## 🔎 **DNS Message Format - Deep Dive**  
-
-### **DNS Header Structure (12 Bytes)**  
-| Field      | Size (Bits) | Description |
-|------------|------------|-------------|
-| ID         | 16         | Transaction ID |
-| Flags      | 16         | QR, OPCODE, AA, TC, RD, RA, RCODE |
-| QDCOUNT    | 16         | Question Count |
-| ANCOUNT    | 16         | Answer Count |
-| NSCOUNT    | 16         | Authority Record Count |
-| ARCOUNT    | 16         | Additional Record Count |
-
----
-
-## **Installation & Deployment**  
-
-### 1️⃣ **Clone the Repository**  
+### Binary Compilation
 ```sh
 git clone https://github.com/sumitbhuia/GoDNS.git
 cd GoDNS
-```
-
-### 2️⃣ **Build the Project**
-```sh
 go build -o godns main.go
 ```
 
-### 3️⃣ Run the DNS Server
+### Process Execution
 ```sh
-./godns
+sudo ./godns  # Requires privileged port binding
 ```
-**Alternatively, use the shell script for automatic execution:**
 
-```sh
-chmod +x run.sh
-./run.sh
-```
-The server will start listening on UDP port 53, handling incoming DNS queries and forwarding unresolved queries to the specified upstream resolver.
+Default configuration establishes UDP listener on port 53 with upstream resolver at 8.8.8.8:53.
 
----
+## Protocol Enhancement Specifications
 
-## **Future Enhancements ????**  
+### Planned Implementation Extensions
+- TCP fallback for truncated responses
+- EDNS0 (RFC6891) implementation
+- Response cache with LRU eviction
+- Extended RR type support
+- Security protocol integration
 
-- **DNSSEC Validation & Signature Checking (RFC 4035)**  
-- **DNS-over-TLS (DoT) & DNS-over-HTTPS (DoH) Support**  
-- **gRPC API for Query Inspection & Analytics**  
-- **Adaptive Query Routing Using AI-Based Traffic Shaping**  
-- **Advanced Anycast Load Balancing for Geo-Optimized Resolution**  
+## RFC Specifications
 
----
+### Primary Protocol Documentation
+- [RFC 1035: DNS Implementation and Specification](https://datatracker.ietf.org/doc/html/rfc1035)
+- [RFC 6891: Extension Mechanisms for DNS (EDNS(0))](https://datatracker.ietf.org/doc/html/rfc6891)
 
-## **Further Reading & RFCs**  
+## Technical Proficiencies Demonstrated
+- Protocol Engineering
+- Distributed Systems Architecture
+- Concurrent Programming Patterns
+- Binary Protocol Implementation
+- Network Stack Integration
+- Resource Management
+- Error Handling Methodologies
 
-📖 **IETF RFCs & Technical Documentation:**  
-- [RFC 1035: Domain Name System (DNS)](https://datatracker.ietf.org/doc/html/rfc1035)  
-- [RFC 2181: Clarifications to the DNS Specification](https://datatracker.ietf.org/doc/html/rfc2181)  
-- [RFC 4035: DNS Security Extensions (DNSSEC)](https://datatracker.ietf.org/doc/html/rfc4035)  
-- [RFC 6891: Extension Mechanisms for DNS (EDNS0)](https://datatracker.ietf.org/doc/html/rfc6891)  
+## Implementation Contact Vector
 
----
-
-## **Contact**  
- 
-
-📧 **Email:** sumitbhuia100@gmail.com  
-🐙 **GitHub:** [sumitbhuia](https://github.com/sumitbhuia)  
-💬 **Twitter:** [@bhuia_sumit](https://twitter.com/bhuia_sumit)  
+📧 **Electronic Mail:** sumitbhuia100@gmail.com  
+🐙 **Version Control:** [sumitbhuia](https://github.com/sumitbhuia)  
+💬 **Communication Channel:** [@bhuia_sumit](https://twitter.com/bhuia_sumit)
 
 ---
 
-⭐ **If you find this project useful, consider starring the repository!** ⭐  
+⭐ **Repository attribution appreciated** ⭐
