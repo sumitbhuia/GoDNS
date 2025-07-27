@@ -1,4 +1,3 @@
-// File: dns/server.go
 package dns
 
 import (
@@ -13,6 +12,7 @@ type DNSServer struct {
 	addr          string
 	forwarderAddr string
 	conn          *net.UDPConn
+	forwarderConn *net.UDPConn
 	running       bool
 	mu            sync.Mutex
 	wg            sync.WaitGroup
@@ -37,6 +37,7 @@ func (s *DNSServer) Start() error {
 		return fmt.Errorf("server already running")
 	}
 
+	// Resolve and listen on the server address
 	addr, err := net.ResolveUDPAddr("udp", s.addr)
 	if err != nil {
 		return fmt.Errorf("failed to resolve address: %v", err)
@@ -48,8 +49,23 @@ func (s *DNSServer) Start() error {
 	}
 
 	s.conn = conn
-	s.running = true
 
+	// Resolve and dial the forwarder address ONCE
+	forwarderAddr, err := net.ResolveUDPAddr("udp", s.forwarderAddr)
+	if err != nil {
+		s.conn.Close() // Clean up listener
+		return fmt.Errorf("failed to resolve forwarder address: %v", err)
+	}
+
+	forwarderConn, err := net.DialUDP("udp", nil, forwarderAddr)
+	if err != nil {
+		s.conn.Close()
+		return fmt.Errorf("failed to dial forwarder: %v", err)
+	}
+
+	s.forwarderConn = forwarderConn
+
+	s.running = true
 	s.wg.Add(1)
 	go s.serve()
 
@@ -81,20 +97,14 @@ func (s *DNSServer) serve() {
 }
 
 func (s *DNSServer) forwardQuery(query []byte) ([]byte, error) {
-	forwarderAddr, err := net.ResolveUDPAddr("udp", s.forwarderAddr)
-	if err != nil {
-		return nil, err
+	conn := s.forwarderConn
+	if conn == nil {
+		return nil, fmt.Errorf("forwarder connection is not available")
 	}
-
-	conn, err := net.DialUDP("udp", nil, forwarderAddr)
-	if err != nil {
-		return nil, err
-	}
-	defer conn.Close()
 
 	conn.SetDeadline(time.Now().Add(5 * time.Second))
 
-	_, err = conn.Write(query)
+	_, err := conn.Write(query)
 	if err != nil {
 		return nil, err
 	}
@@ -115,14 +125,12 @@ func (s *DNSServer) handleQuery(query []byte, remoteAddr *net.UDPAddr) {
 		return
 	}
 
-	s.mu.Lock()
-	conn := s.conn
-	s.mu.Unlock()
-
-	if conn != nil {
-		_, err = conn.WriteToUDP(response, remoteAddr)
+	if s.conn != nil {
+		_, err = s.conn.WriteToUDP(response, remoteAddr)
 		if err != nil {
-			log.Printf("Response error: %v", err)
+			if s.isRunning() {
+				log.Printf("Response error: %v", err)
+			}
 		}
 	}
 }
@@ -149,11 +157,16 @@ func (s *DNSServer) Stop() error {
 	}
 	s.running = false
 	conn := s.conn
+	forwarderConn := s.forwarderConn // Get the forwarder connection
 	s.mu.Unlock()
 
 	if conn != nil {
 		conn.Close()
 	}
+	if forwarderConn != nil {
+		forwarderConn.Close() // Close the forwarder connection
+	}
+
 	s.wg.Wait()
 	return nil
 }
