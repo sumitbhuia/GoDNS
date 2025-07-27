@@ -1,7 +1,123 @@
-# ⚡ GoDNS - High-Performance, RFC-Compliant Recursive DNS Resolver
+# ⚡ GoDNS - High-Performance DNS Resolver in Go
 
-A concurrent DNS protocol implementation in Go, featuring non-blocking I/O architecture, RFC1035-compliant message processing, and upstream resolver integration. The implementation demonstrates advanced protocol engineering patterns and distributed systems principles.
+<p align="center">
+  <img src="https://img.shields.io/badge/Go-1.18+-00ADD8?style=for-the-badge&logo=go" alt="Go Version">
+  <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20windows-blue?style=for-the-badge&logo=linux" alt="Platform">
+    
+### Primary Protocol Documentation
+- [RFC 1035: DNS Implementation and Specification](https://datatracker.ietf.org/doc/html/rfc1035)
+- [RFC 6891: Extension Mechanisms for DNS (EDNS(0))](https://datatracker.ietf.org/doc/html/rfc6891)
 
+GoDNS is a DNS resolver built from scratch in Go, designed to be RFC 1035 compliant. This project demonstrates core networking concepts by implementing the DNS protocol, featuring a concurrent, non-blocking architecture, and a comprehensive test suite with performance benchmarks.
+
+## ✨ Key Features
+
+* **RFC 1035 Compliant:** Correctly parses and serializes DNS messages, including headers, questions, and resource records.
+* **Concurrent by Design:** Uses goroutines to handle multiple incoming queries simultaneously without blocking, maximizing CPU utilization.
+* **DNS Message Compression:** Implements label compression and decompression with pointer support to reduce message size, a key feature of the DNS protocol.
+* **Built-in Forwarder:** Forwards queries it can't resolve to an upstream resolver (e.g., Google's `8.8.8.8`).
+* **Extensively Tested:** Includes unit, integration, and performance benchmark tests to ensure correctness and efficiency.
+
+---
+
+
+## 🚀 Performance Analysis
+
+The server was benchmarked to measure its two key performance indicators: **latency** (speed) and **throughput** (capacity).
+
+**Test Conditions:** These tests were conducted in a controlled local environment (on a single machine) to measure the raw processing power of the application's code, isolating it from real-world network delays. This provides a clear baseline of the server's core efficiency.
+
+#### Query Latency: How *Fast* is a Single Request?
+
+This graph shows the time it takes for a single query to be processed by the server. **Lower numbers are better.** The box plot visualizes the consistency of the server's response time over many runs, with the green line representing the average (median) speed.
+
+<p align="center">
+  <img src="benchmark_latency.png" alt="Benchmark Latency Results" width="600">
+  <br>
+  <em>This shows that the server consistently responds very quickly, establishing an efficient baseline for a single transaction.</em>
+</p>
+
+#### Server Throughput: How *Much* Can It Handle at Once?
+
+This graph shows how many queries the server can handle per second when processing many requests in parallel. **Higher numbers are better.** This demonstrates the effectiveness of the concurrent architecture using Go's goroutines.
+
+<p align="center">
+  <img src="benchmark_throughput.png" alt="Benchmark Throughput Results" width="600">
+  <br>
+  <em>The result confirms the server's non-blocking design can effectively scale to handle a high volume of simultaneous queries.</em>
+</p>
+
+---
+
+## 🛠️ Getting Started
+
+### Prerequisites
+
+* Go 1.18 or newer
+
+### 1. Clone the Repository
+
+```sh
+git clone https://github.com/sumitbhuia/GoDNS.git
+cd GoDNS
+````
+
+### 2\. Build the Binary
+
+```sh
+# The main package is in the root directory
+go build -o godns main.go
+```
+
+### 3\. Run the Server
+
+The server listens on port 53 by default, which requires root privileges.
+
+```sh
+sudo ./godns
+```
+
+To run on a non-privileged port (e.g., 5353) for development:
+
+```sh
+./godns -addr=":5353"
+```
+
+-----
+
+## ✅ Testing
+
+The project includes a comprehensive test suite.
+
+### Run All Tests
+
+This command runs all unit and integration tests.
+
+```sh
+go test ./...
+```
+
+### Run Benchmarks
+
+This command will run the performance benchmarks and output the results to your console.
+
+```sh
+go test -bench=. -benchmem ./...
+```
+
+-----
+
+## How It Works
+
+GoDNS listens for incoming DNS queries over UDP. When a query is received, a new goroutine is spawned to handle it, ensuring the server remains responsive.
+
+1.  **Parsing:** The raw byte query is parsed into a Go struct according to RFC 1035 specifications. This includes decoding the domain name, which may use pointer-based compression.
+2.  **Forwarding:** The query is then packed back into its binary format and forwarded to an upstream DNS resolver (e.g., `8.8.8.8`).
+3.  **Responding:** When the upstream server responds, GoDNS receives the response and relays it back to the original client, completing the cycle.
+
+<details>
+      <summary>More Details - Architecture</summary>
+    
 ## Protocol Architecture
 
 ### Core Implementation Components
@@ -86,57 +202,15 @@ type DNSRecord struct {
 - Binary-safe buffer handling
 - Resource lifecycle management
 
-## Deployment Configuration
+    
+</details>
 
-### Prerequisites
-- Go runtime environment (≥1.18)
-- Privileged port binding capabilities
-- Network stack access permissions
 
-### Binary Compilation
-```sh
-git clone https://github.com/sumitbhuia/GoDNS.git
-cd GoDNS
-go build -o godns main.go
-```
+# ☎️ Contact
 
-### Process Execution
-```sh
-sudo ./godns  # Requires privileged port binding
-```
-
-Default configuration establishes UDP listener on port 53 with upstream resolver at 8.8.8.8:53.
-
-## Protocol Enhancement Specifications
-
-### Planned Implementation Extensions
-- TCP fallback for truncated responses
-- EDNS0 (RFC6891) implementation
-- Response cache with LRU eviction
-- Extended RR type support
-- Security protocol integration
-
-## RFC Specifications
-
-### Primary Protocol Documentation
-- [RFC 1035: DNS Implementation and Specification](https://datatracker.ietf.org/doc/html/rfc1035)
-- [RFC 6891: Extension Mechanisms for DNS (EDNS(0))](https://datatracker.ietf.org/doc/html/rfc6891)
-
-## Technical Proficiencies Demonstrated
-- Protocol Engineering
-- Distributed Systems Architecture
-- Concurrent Programming Patterns
-- Binary Protocol Implementation
-- Network Stack Integration
-- Resource Management
-- Error Handling Methodologies
-
-## Implementation Contact Vector
-
-📧 **Electronic Mail:** sumitbhuia100@gmail.com  
-🐙 **Version Control:** [sumitbhuia](https://github.com/sumitbhuia)  
-💬 **Communication Channel:** [@bhuia_sumit](https://twitter.com/bhuia_sumit)
+  * **Email:** `sumitbhuia100@gmail.com`
+  * **Twitter:** [@bhuia\_sumit](https://twitter.com/bhuia_sumit)
 
 ---
+   
 
-⭐ **Repository attribution appreciated** ⭐
