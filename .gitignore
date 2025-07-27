@@ -1,2 +1,8 @@
 .DS_STORE
 
+# Compiled binaries
+GoDNS
+godns
+
+# Generated data files
+bench_results.txt
